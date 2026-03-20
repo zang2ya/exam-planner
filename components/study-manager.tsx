@@ -174,16 +174,16 @@ export function StudyManager({ initialData }: Props) {
       <section className="heroPanel">
         <div>
           <p className="eyebrow">Exam Planner</p>
-          <h1>Plan, execute, and review your study day in one flow.</h1>
+          <h1>수험생의 하루를 계획, 실행, 회고까지 한 흐름으로.</h1>
           <p className="heroCopy">
-            This app syncs your study schedule directly to Google Sheets. Manage daily plans, actual study time,
-            todos, exam dates, and a one-note diary from the same dashboard.
+            이 앱은 학습 일정을 Google Sheets에 바로 동기화합니다. 데일리 계획, 실제 공부 시간, 투두,
+            시험 일정, 하루 메모를 한 화면에서 관리하세요.
           </p>
         </div>
         <div className="dateCard">
-          <span>Selected date</span>
+          <span>기준 날짜</span>
           <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
-          <p>You are viewing the full study flow for {safeDateLabel(selectedDate)}.</p>
+          <p>{safeDateLabel(selectedDate)} 기준으로 하루 학습 흐름을 보고 있습니다.</p>
           {notice ? <strong>{notice}</strong> : null}
         </div>
       </section>
@@ -191,38 +191,38 @@ export function StudyManager({ initialData }: Props) {
       <section className="statsGrid">
         <article className="statCard">
           <Clock3 size={20} />
-          <span>Planned today</span>
+          <span>오늘 계획 시간</span>
           <strong>{formatMinutes(summary.todayPlanMinutes)}</strong>
         </article>
         <article className="statCard">
           <Target size={20} />
-          <span>Actual today</span>
+          <span>오늘 실제 시간</span>
           <strong>{formatMinutes(summary.todayActualMinutes)}</strong>
         </article>
         <article className="statCard">
           <CheckCircle2 size={20} />
-          <span>Completion</span>
+          <span>달성률</span>
           <strong>{summary.completionRate}%</strong>
         </article>
         <article className="statCard">
           <ListTodo size={20} />
-          <span>Todos left</span>
+          <span>남은 투두</span>
           <strong>{summary.remainingTodos}</strong>
         </article>
         <article className="statCard">
           <CalendarRange size={20} />
-          <span>Nearest exam</span>
-          <strong>{summary.nearestExam ? summary.nearestExam.name : "None"}</strong>
+          <span>가장 가까운 시험</span>
+          <strong>{summary.nearestExam ? summary.nearestExam.name : "없음"}</strong>
           <small>
             {summary.nearestExam
               ? `D-${differenceInCalendarDays(parseISO(summary.nearestExam.examDate), parseISO(selectedDate))}`
-              : "Manual entries"}
+              : "직접 등록"}
           </small>
         </article>
         <article className="statCard">
           <NotebookPen size={20} />
-          <span>Diary today</span>
-          <strong>{summary.hasDiaryToday ? "Done" : "Missing"}</strong>
+          <span>오늘 일기</span>
+          <strong>{summary.hasDiaryToday ? "작성 완료" : "미작성"}</strong>
         </article>
       </section>
 
@@ -232,28 +232,28 @@ export function StudyManager({ initialData }: Props) {
             <div className="panelHeader">
               <div>
                 <p className="eyebrow">Daily Planner</p>
-                <h2>Daily study plan</h2>
+                <h2>데일리 공부 계획</h2>
               </div>
               <strong>{formatMinutes(dayPlans.reduce((sum, item) => sum + item.plannedMinutes, 0))}</strong>
             </div>
             <form className="formGrid" onSubmit={submitPlan}>
               <input type="date" value={planForm.date} onChange={(e) => setPlanForm({ ...planForm, date: e.target.value })} />
-              <input placeholder="Subject" value={planForm.subject} onChange={(e) => setPlanForm({ ...planForm, subject: e.target.value })} list="subject-list" />
-              <input type="number" min="0" placeholder="Planned minutes" value={planForm.plannedMinutes} onChange={(e) => setPlanForm({ ...planForm, plannedMinutes: Number(e.target.value) })} />
+              <input placeholder="과목" value={planForm.subject} onChange={(e) => setPlanForm({ ...planForm, subject: e.target.value })} list="subject-list" />
+              <input type="number" min="0" placeholder="계획 시간(분)" value={planForm.plannedMinutes} onChange={(e) => setPlanForm({ ...planForm, plannedMinutes: Number(e.target.value) })} />
               <input type="time" value={planForm.startTime} onChange={(e) => setPlanForm({ ...planForm, startTime: e.target.value })} />
               <input type="time" value={planForm.endTime} onChange={(e) => setPlanForm({ ...planForm, endTime: e.target.value })} />
-              <textarea placeholder="Memo" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} />
-              <button className="primaryButton" disabled={pending}>Save plan</button>
+              <textarea placeholder="메모" value={planForm.note} onChange={(e) => setPlanForm({ ...planForm, note: e.target.value })} />
+              <button className="primaryButton" disabled={pending}>계획 저장</button>
             </form>
             <div className="listStack">
               {dayPlans.map((plan) => (
                 <div className="listItem" key={plan.id}>
                   <div>
                     <strong>{plan.subject}</strong>
-                    <p>{formatMinutes(plan.plannedMinutes)} | {plan.startTime || "--:--"} to {plan.endTime || "--:--"}</p>
+                    <p>{formatMinutes(plan.plannedMinutes)} | {plan.startTime || "--:--"} ~ {plan.endTime || "--:--"}</p>
                     {plan.note ? <small>{plan.note}</small> : null}
                   </div>
-                  <button className="ghostButton" type="button" onClick={() => deleteResource("/api/plans", plan.id, "plans")}>Delete</button>
+                  <button className="ghostButton" type="button" onClick={() => deleteResource("/api/plans", plan.id, "plans")}>삭제</button>
                 </div>
               ))}
             </div>
@@ -263,32 +263,32 @@ export function StudyManager({ initialData }: Props) {
             <div className="panelHeader">
               <div>
                 <p className="eyebrow">Study Log</p>
-                <h2>Actual study time</h2>
+                <h2>실제 공부 기록</h2>
               </div>
               <strong>{formatMinutes(dayLogs.reduce((sum, item) => sum + item.actualMinutes, 0))}</strong>
             </div>
             <form className="formGrid" onSubmit={submitLog}>
               <input type="date" value={logForm.date} onChange={(e) => setLogForm({ ...logForm, date: e.target.value })} />
-              <input placeholder="Subject" value={logForm.subject} onChange={(e) => setLogForm({ ...logForm, subject: e.target.value })} list="subject-list" />
-              <input type="number" min="0" placeholder="Actual minutes" value={logForm.actualMinutes} onChange={(e) => setLogForm({ ...logForm, actualMinutes: Number(e.target.value) })} />
+              <input placeholder="과목" value={logForm.subject} onChange={(e) => setLogForm({ ...logForm, subject: e.target.value })} list="subject-list" />
+              <input type="number" min="0" placeholder="실제 시간(분)" value={logForm.actualMinutes} onChange={(e) => setLogForm({ ...logForm, actualMinutes: Number(e.target.value) })} />
               <input type="time" value={logForm.startTime} onChange={(e) => setLogForm({ ...logForm, startTime: e.target.value })} />
               <input type="time" value={logForm.endTime} onChange={(e) => setLogForm({ ...logForm, endTime: e.target.value })} />
               <select value={logForm.planId} onChange={(e) => setLogForm({ ...logForm, planId: e.target.value })}>
-                <option value="">No linked plan</option>
+                <option value="">연결 계획 없음</option>
                 {dayPlans.map((plan) => <option value={plan.id} key={plan.id}>{plan.subject}</option>)}
               </select>
-              <textarea placeholder="Review note" value={logForm.review} onChange={(e) => setLogForm({ ...logForm, review: e.target.value })} />
-              <button className="primaryButton" disabled={pending}>Save log</button>
+              <textarea placeholder="회고 메모" value={logForm.review} onChange={(e) => setLogForm({ ...logForm, review: e.target.value })} />
+              <button className="primaryButton" disabled={pending}>기록 저장</button>
             </form>
             <div className="listStack">
               {dayLogs.map((log) => (
                 <div className="listItem" key={log.id}>
                   <div>
                     <strong>{log.subject}</strong>
-                    <p>{formatMinutes(log.actualMinutes)} | {log.startTime || "--:--"} to {log.endTime || "--:--"}</p>
+                    <p>{formatMinutes(log.actualMinutes)} | {log.startTime || "--:--"} ~ {log.endTime || "--:--"}</p>
                     {log.review ? <small>{log.review}</small> : null}
                   </div>
-                  <button className="ghostButton" type="button" onClick={() => deleteResource("/api/logs", log.id, "logs")}>Delete</button>
+                  <button className="ghostButton" type="button" onClick={() => deleteResource("/api/logs", log.id, "logs")}>삭제</button>
                 </div>
               ))}
             </div>
@@ -298,26 +298,26 @@ export function StudyManager({ initialData }: Props) {
             <div className="panelHeader">
               <div>
                 <p className="eyebrow">Daily Diary</p>
-                <h2>One diary note per day</h2>
+                <h2>하루 1개 일기 메모</h2>
               </div>
-              <strong>{selectedDate === today ? "Today" : safeDateLabel(selectedDate)}</strong>
+              <strong>{selectedDate === today ? "오늘" : safeDateLabel(selectedDate)}</strong>
             </div>
             <form className="formGrid" onSubmit={submitDiary}>
               <input type="date" value={String(diaryForm.date ?? selectedDate)} onChange={(e) => setDiaryForm({ ...diaryForm, date: e.target.value })} />
-              <input placeholder="Short title" value={String(diaryForm.title ?? "")} onChange={(e) => setDiaryForm({ ...diaryForm, title: e.target.value })} />
+              <input placeholder="한줄 제목" value={String(diaryForm.title ?? "")} onChange={(e) => setDiaryForm({ ...diaryForm, title: e.target.value })} />
               <select value={String(diaryForm.mood ?? "steady")} onChange={(e) => setDiaryForm({ ...diaryForm, mood: e.target.value as DailyDiary["mood"] })}>
-                <option value="great">Great</option>
-                <option value="steady">Steady</option>
-                <option value="tired">Tired</option>
-                <option value="stressed">Stressed</option>
+                <option value="great">아주 좋음</option>
+                <option value="steady">무난함</option>
+                <option value="tired">피곤함</option>
+                <option value="stressed">스트레스 큼</option>
               </select>
               <textarea
                 className="largeTextarea"
-                placeholder="Write a short reflection on your study flow, mood, and what to improve tomorrow."
+                placeholder="오늘의 공부 흐름, 기분, 내일 보완할 점을 간단히 적어보세요."
                 value={String(diaryForm.content ?? "")}
                 onChange={(e) => setDiaryForm({ ...diaryForm, content: e.target.value })}
               />
-              <button className="primaryButton" disabled={pending}>Save diary</button>
+              <button className="primaryButton" disabled={pending}>일기 저장</button>
             </form>
           </article>
         </div>
@@ -327,20 +327,20 @@ export function StudyManager({ initialData }: Props) {
             <div className="panelHeader">
               <div>
                 <p className="eyebrow">Todos</p>
-                <h2>Todo list</h2>
+                <h2>투두 리스트</h2>
               </div>
               <strong>{data.todos.filter((item) => item.status === "done").length}/{data.todos.length}</strong>
             </div>
             <form className="formGrid" onSubmit={submitTodo}>
-              <input placeholder="Task title" value={todoForm.title} onChange={(e) => setTodoForm({ ...todoForm, title: e.target.value })} />
+              <input placeholder="할 일 제목" value={todoForm.title} onChange={(e) => setTodoForm({ ...todoForm, title: e.target.value })} />
               <input type="date" value={todoForm.dueDate} onChange={(e) => setTodoForm({ ...todoForm, dueDate: e.target.value })} />
-              <input placeholder="Subject" value={todoForm.subject} onChange={(e) => setTodoForm({ ...todoForm, subject: e.target.value })} list="subject-list" />
+              <input placeholder="과목" value={todoForm.subject} onChange={(e) => setTodoForm({ ...todoForm, subject: e.target.value })} list="subject-list" />
               <select value={todoForm.priority} onChange={(e) => setTodoForm({ ...todoForm, priority: e.target.value as Todo["priority"] })}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
+                <option value="low">낮음</option>
+                <option value="medium">보통</option>
+                <option value="high">높음</option>
               </select>
-              <button className="primaryButton" disabled={pending}>Add todo</button>
+              <button className="primaryButton" disabled={pending}>투두 추가</button>
             </form>
             <div className="listStack">
               {data.todos
@@ -350,12 +350,12 @@ export function StudyManager({ initialData }: Props) {
                   <div className="listItem" key={todo.id}>
                     <div>
                       <strong>{todo.title}</strong>
-                      <p>{todo.subject || "General"} | {todo.dueDate ? safeDateLabel(todo.dueDate) : "No due date"} | {todo.priority}</p>
-                      <small>Status: {todo.status}</small>
+                      <p>{todo.subject || "일반"} | {todo.dueDate ? safeDateLabel(todo.dueDate) : "마감 없음"} | {todo.priority}</p>
+                      <small>상태: {todo.status}</small>
                     </div>
                     <div className="inlineActions">
-                      <button className="ghostButton" type="button" onClick={() => cycleTodo(todo)}>Cycle status</button>
-                      <button className="ghostButton" type="button" onClick={() => deleteResource("/api/todos", todo.id, "todos")}>Delete</button>
+                      <button className="ghostButton" type="button" onClick={() => cycleTodo(todo)}>상태 변경</button>
+                      <button className="ghostButton" type="button" onClick={() => deleteResource("/api/todos", todo.id, "todos")}>삭제</button>
                     </div>
                   </div>
                 ))}
@@ -366,22 +366,22 @@ export function StudyManager({ initialData }: Props) {
             <div className="panelHeader">
               <div>
                 <p className="eyebrow">Exams</p>
-                <h2>Yearly exam schedule</h2>
+                <h2>연간 시험 일정</h2>
               </div>
-              <strong>{data.exams.length} items</strong>
+              <strong>{data.exams.length}건</strong>
             </div>
             <form className="formGrid" onSubmit={submitExam}>
-              <input placeholder="Exam name" value={examForm.name} onChange={(e) => setExamForm({ ...examForm, name: e.target.value })} />
+              <input placeholder="시험명" value={examForm.name} onChange={(e) => setExamForm({ ...examForm, name: e.target.value })} />
               <input type="date" value={examForm.examDate} onChange={(e) => setExamForm({ ...examForm, examDate: e.target.value })} />
               <input type="date" value={examForm.registrationStart} onChange={(e) => setExamForm({ ...examForm, registrationStart: e.target.value })} />
               <input type="date" value={examForm.registrationEnd} onChange={(e) => setExamForm({ ...examForm, registrationEnd: e.target.value })} />
               <select value={examForm.importance} onChange={(e) => setExamForm({ ...examForm, importance: e.target.value as Exam["importance"] })}>
-                <option value="normal">Normal</option>
-                <option value="important">Important</option>
-                <option value="critical">Critical</option>
+                <option value="normal">보통</option>
+                <option value="important">중요</option>
+                <option value="critical">매우 중요</option>
               </select>
-              <textarea placeholder="Memo" value={examForm.memo} onChange={(e) => setExamForm({ ...examForm, memo: e.target.value })} />
-              <button className="primaryButton" disabled={pending}>Save exam</button>
+              <textarea placeholder="메모" value={examForm.memo} onChange={(e) => setExamForm({ ...examForm, memo: e.target.value })} />
+              <button className="primaryButton" disabled={pending}>시험 저장</button>
             </form>
             <div className="monthGrid">
               {Object.entries(monthGroups).map(([month, exams]) => (
@@ -393,7 +393,7 @@ export function StudyManager({ initialData }: Props) {
                         <span>{exam.name}</span>
                         <small>{safeDateLabel(exam.examDate)} | D-{differenceInCalendarDays(parseISO(exam.examDate), parseISO(selectedDate))}</small>
                       </div>
-                      <button className="ghostButton" type="button" onClick={() => deleteResource("/api/exams", exam.id, "exams")}>Delete</button>
+                      <button className="ghostButton" type="button" onClick={() => deleteResource("/api/exams", exam.id, "exams")}>삭제</button>
                     </div>
                   ))}
                 </div>
@@ -405,12 +405,12 @@ export function StudyManager({ initialData }: Props) {
             <div className="panelHeader">
               <div>
                 <p className="eyebrow">Settings</p>
-                <h2>Default subjects</h2>
+                <h2>기본 과목 설정</h2>
               </div>
-              <strong>Sheets sync</strong>
+              <strong>시트 연동</strong>
             </div>
             <form className="formGrid" onSubmit={saveSettings}>
-              <input value={subjectInput} onChange={(e) => setSubjectInput(e.target.value)} placeholder="Korean, English, Math" />
+              <input value={subjectInput} onChange={(e) => setSubjectInput(e.target.value)} placeholder="국어, 영어, 수학" />
               <input
                 type="number"
                 min="0"
@@ -419,9 +419,9 @@ export function StudyManager({ initialData }: Props) {
                   ...current,
                   settings: { ...current.settings, dailyTargetMinutes: Number(e.target.value) },
                 }))}
-                placeholder="Daily target minutes"
+                placeholder="하루 목표 시간(분)"
               />
-              <button className="primaryButton" disabled={pending}>Save settings</button>
+              <button className="primaryButton" disabled={pending}>설정 저장</button>
             </form>
             <p className="metaText">Spreadsheet ID: {data.spreadsheetId}</p>
           </article>

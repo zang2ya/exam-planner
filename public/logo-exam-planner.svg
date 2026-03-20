@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="120" fill="url(#bg)"/>
+  <circle cx="396" cy="116" r="56" fill="#FFF5E9" fill-opacity="0.2"/>
+  <circle cx="128" cy="404" r="72" fill="#D56C3D" fill-opacity="0.18"/>
+  <rect x="104" y="92" width="304" height="328" rx="40" fill="#FFF9F1"/>
+  <rect x="132" y="128" width="248" height="264" rx="28" fill="#FFFFFF"/>
+  <rect x="168" y="174" width="104" height="18" rx="9" fill="#D56C3D"/>
+  <rect x="168" y="214" width="176" height="14" rx="7" fill="#E7D7C4"/>
+  <rect x="168" y="244" width="156" height="14" rx="7" fill="#E7D7C4"/>
+  <rect x="168" y="274" width="184" height="14" rx="7" fill="#E7D7C4"/>
+  <path d="M161 340L201 380L351 230" stroke="#2F7D50" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="214" y="72" width="84" height="36" rx="18" fill="#8D3C21"/>
+  <text x="256" y="468" text-anchor="middle" fill="#FFF6EA" font-family="Segoe UI, Arial, sans-serif" font-size="44" font-weight="700" letter-spacing="6">EP</text>
+  <defs>
+    <linearGradient id="bg" x1="72" y1="48" x2="424" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B5542F"/>
+      <stop offset="1" stop-color="#7E3218"/>
+    </linearGradient>
+  </defs>
+</svg>

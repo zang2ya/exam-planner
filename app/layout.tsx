@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Exam Planner",
   description: "Google Sheets powered study planner for exam preparation",
+  icons: {
+    icon: "/logo-exam-planner.svg",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

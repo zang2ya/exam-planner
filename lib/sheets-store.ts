@@ -10,14 +10,33 @@ type BuildContext = {
 };
 
 type SheetName = keyof typeof SHEET_HEADERS;
+type SpreadsheetCacheEntry = {
+  spreadsheetId: string;
+  sheetIds: Partial<Record<SheetName, number>>;
+};
 
 const SPREADSHEET_TITLE_PREFIX = "Exam Planner";
+const spreadsheetCache = new Map<string, SpreadsheetCacheEntry>();
 
 function spreadsheetTitleFor(email: string) {
   return `${SPREADSHEET_TITLE_PREFIX} - ${email}`;
 }
 
+function getCachedSpreadsheet(email: string) {
+  return spreadsheetCache.get(email);
+}
+
+function setCachedSpreadsheet(email: string, value: SpreadsheetCacheEntry) {
+  spreadsheetCache.set(email, value);
+  return value;
+}
+
 async function findSpreadsheetId(ctx: BuildContext) {
+  const cached = getCachedSpreadsheet(ctx.email);
+  if (cached?.spreadsheetId) {
+    return cached.spreadsheetId;
+  }
+
   const result = await ctx.drive.files.list({
     q: [
       "mimeType='application/vnd.google-apps.spreadsheet'",
@@ -28,7 +47,12 @@ async function findSpreadsheetId(ctx: BuildContext) {
     pageSize: 1,
   });
 
-  return result.data.files?.[0]?.id;
+  const spreadsheetId = result.data.files?.[0]?.id;
+  if (spreadsheetId) {
+    setCachedSpreadsheet(ctx.email, { spreadsheetId, sheetIds: {} });
+  }
+
+  return spreadsheetId;
 }
 
 async function createSpreadsheet(ctx: BuildContext) {
@@ -47,75 +71,123 @@ async function createSpreadsheet(ctx: BuildContext) {
     throw new Error("SPREADSHEET_CREATE_FAILED");
   }
 
-  await Promise.all(
-    SHEET_TITLES.map((title) => ensureHeaderRow(ctx.sheets, spreadsheetId, title)),
-  );
+  const sheetIds = Object.fromEntries(
+    (created.data.sheets ?? [])
+      .map((sheet) => [sheet.properties?.title, sheet.properties?.sheetId] as const)
+      .filter((entry): entry is [string, number] => Boolean(entry[0]) && entry[1] !== undefined),
+  ) as Partial<Record<SheetName, number>>;
 
-  await ctx.sheets.spreadsheets.values.append({
+  await ctx.sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
-    range: "Settings!A:C",
-    valueInputOption: "RAW",
     requestBody: {
-      values: [[DEFAULT_SETTINGS_ROW.id, DEFAULT_SETTINGS_ROW.subjects, DEFAULT_SETTINGS_ROW.dailyTargetMinutes]],
+      valueInputOption: "RAW",
+      data: [
+        ...SHEET_TITLES.map((title) => ({
+          range: `${title}!1:1`,
+          values: [SHEET_HEADERS[title] as unknown as string[]],
+        })),
+        {
+          range: "Settings!A2:C2",
+          values: [[DEFAULT_SETTINGS_ROW.id, DEFAULT_SETTINGS_ROW.subjects, DEFAULT_SETTINGS_ROW.dailyTargetMinutes]],
+        },
+      ],
     },
   });
 
+  setCachedSpreadsheet(ctx.email, { spreadsheetId, sheetIds });
   return spreadsheetId;
 }
 
-async function ensureHeaderRow(sheets: sheets_v4.Sheets, spreadsheetId: string, title: SheetName) {
-  const range = `${title}!1:1`;
-  const current = await sheets.spreadsheets.values.get({ spreadsheetId, range });
-  const headers = SHEET_HEADERS[title];
-
-  if (current.data.values?.[0]?.join("|") === headers.join("|")) {
-    return;
-  }
-
-  await sheets.spreadsheets.values.update({
+async function getSpreadsheetMetadata(sheets: sheets_v4.Sheets, spreadsheetId: string) {
+  return sheets.spreadsheets.get({
     spreadsheetId,
-    range,
-    valueInputOption: "RAW",
-    requestBody: {
-      values: [headers as unknown as string[]],
-    },
+    fields: "sheets.properties.sheetId,sheets.properties.title",
   });
 }
 
-async function ensureSheetExists(sheets: sheets_v4.Sheets, spreadsheetId: string, title: SheetName) {
-  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-  const existingTitles = new Set(
-    spreadsheet.data.sheets?.map((sheet) => sheet.properties?.title).filter(Boolean),
-  );
+async function ensureSpreadsheetStructure(ctx: BuildContext, spreadsheetId: string) {
+  const spreadsheet = await getSpreadsheetMetadata(ctx.sheets, spreadsheetId);
+  const existingSheets = new Map<SheetName, number>();
 
-  if (!existingTitles.has(title)) {
-    await sheets.spreadsheets.batchUpdate({
+  for (const sheet of spreadsheet.data.sheets ?? []) {
+    const title = sheet.properties?.title as SheetName | undefined;
+    const sheetId = sheet.properties?.sheetId;
+    if (title && sheetId !== undefined && sheetId !== null) {
+      existingSheets.set(title, sheetId);
+    }
+  }
+
+  const missingTitles = SHEET_TITLES.filter((title) => !existingSheets.has(title));
+
+  if (missingTitles.length > 0) {
+    await ctx.sheets.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
-        requests: [
-          {
-            addSheet: {
-              properties: { title },
-            },
+        requests: missingTitles.map((title) => ({
+          addSheet: {
+            properties: { title },
           },
-        ],
+        })),
       },
     });
   }
 
-  await ensureHeaderRow(sheets, spreadsheetId, title);
+  const finalSpreadsheet = missingTitles.length > 0
+    ? await getSpreadsheetMetadata(ctx.sheets, spreadsheetId)
+    : spreadsheet;
+
+  const sheetIds = Object.fromEntries(
+    (finalSpreadsheet.data.sheets ?? [])
+      .map((sheet) => [sheet.properties?.title, sheet.properties?.sheetId] as const)
+      .filter((entry): entry is [string, number] => Boolean(entry[0]) && entry[1] !== undefined && entry[1] !== null),
+  ) as Partial<Record<SheetName, number>>;
+
+  const headerRanges = SHEET_TITLES.map((title) => `${title}!1:1`);
+  const headerResponse = await ctx.sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges: headerRanges,
+  });
+
+  const updates = SHEET_TITLES.flatMap((title, index) => {
+    const current = headerResponse.data.valueRanges?.[index]?.values?.[0] ?? [];
+    const expected = [...SHEET_HEADERS[title]];
+    if (current.join("|") === expected.join("|")) {
+      return [];
+    }
+    return [{ range: `${title}!1:1`, values: [expected] }];
+  });
+
+  if (updates.length > 0) {
+    await ctx.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: updates,
+      },
+    });
+  }
+
+  setCachedSpreadsheet(ctx.email, { spreadsheetId, sheetIds });
+  return { spreadsheetId, sheetIds };
 }
 
-export async function ensureSpreadsheet(ctx: BuildContext) {
-  let spreadsheetId = await findSpreadsheetId(ctx);
+async function getSpreadsheetId(ctx: BuildContext, ensureStructure = false) {
+  const cached = getCachedSpreadsheet(ctx.email);
+  if (cached?.spreadsheetId && !ensureStructure) {
+    return cached.spreadsheetId;
+  }
+
+  let spreadsheetId = cached?.spreadsheetId ?? await findSpreadsheetId(ctx);
 
   if (!spreadsheetId) {
     spreadsheetId = await createSpreadsheet(ctx);
   }
 
-  await Promise.all(
-    SHEET_TITLES.map((title) => ensureSheetExists(ctx.sheets, spreadsheetId, title)),
-  );
+  if (ensureStructure) {
+    await ensureSpreadsheetStructure(ctx, spreadsheetId);
+  } else if (!cached) {
+    setCachedSpreadsheet(ctx.email, { spreadsheetId, sheetIds: {} });
+  }
 
   return spreadsheetId;
 }
@@ -137,14 +209,8 @@ function rowToObject<T>(headers: readonly string[], row: string[]): T {
   }, {} as T);
 }
 
-async function readSheet<T>(sheets: sheets_v4.Sheets, spreadsheetId: string, sheetTitle: SheetName): Promise<T[]> {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${sheetTitle}!A2:Z`,
-  });
-
-  const rows = response.data.values ?? [];
-  return rows.map((row) => rowToObject<T>(SHEET_HEADERS[sheetTitle], row));
+function mapSheetRows<T>(headers: readonly string[], rows: string[][] = []) {
+  return rows.map((row) => rowToObject<T>(headers, row));
 }
 
 function mapBootstrap(data: {
@@ -217,15 +283,26 @@ function mapBootstrap(data: {
 }
 
 export async function buildBootstrapData(ctx: BuildContext) {
-  const spreadsheetId = await ensureSpreadsheet(ctx);
-  const [plans, logs, todos, exams, diaryEntries, settings] = await Promise.all([
-    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "DailyPlans"),
-    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "StudyLogs"),
-    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "Todos"),
-    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "Exams"),
-    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "DailyDiary"),
-    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "Settings"),
-  ]);
+  const spreadsheetId = await getSpreadsheetId(ctx, true);
+  const response = await ctx.sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges: [
+      "DailyPlans!A2:Z",
+      "StudyLogs!A2:Z",
+      "Todos!A2:Z",
+      "Exams!A2:Z",
+      "DailyDiary!A2:Z",
+      "Settings!A2:Z",
+    ],
+  });
+
+  const ranges = response.data.valueRanges ?? [];
+  const plans = mapSheetRows<Record<string, string>>(SHEET_HEADERS.DailyPlans, ranges[0]?.values as string[][] | undefined);
+  const logs = mapSheetRows<Record<string, string>>(SHEET_HEADERS.StudyLogs, ranges[1]?.values as string[][] | undefined);
+  const todos = mapSheetRows<Record<string, string>>(SHEET_HEADERS.Todos, ranges[2]?.values as string[][] | undefined);
+  const exams = mapSheetRows<Record<string, string>>(SHEET_HEADERS.Exams, ranges[3]?.values as string[][] | undefined);
+  const diaryEntries = mapSheetRows<Record<string, string>>(SHEET_HEADERS.DailyDiary, ranges[4]?.values as string[][] | undefined);
+  const settings = mapSheetRows<Record<string, string>>(SHEET_HEADERS.Settings, ranges[5]?.values as string[][] | undefined);
 
   return mapBootstrap({
     plans,
@@ -253,10 +330,27 @@ async function locateRowIndex(sheets: sheets_v4.Sheets, spreadsheetId: string, s
   return relativeIndex + 2;
 }
 
+async function getSheetId(ctx: BuildContext, spreadsheetId: string, sheetTitle: SheetName) {
+  const cached = getCachedSpreadsheet(ctx.email);
+  const cachedSheetId = cached?.sheetIds?.[sheetTitle];
+  if (cachedSheetId !== undefined) {
+    return cachedSheetId;
+  }
+
+  const metadata = await ensureSpreadsheetStructure(ctx, spreadsheetId);
+  const sheetId = metadata.sheetIds[sheetTitle];
+
+  if (sheetId === undefined) {
+    throw new Error("SHEET_NOT_FOUND");
+  }
+
+  return sheetId;
+}
+
 export async function createRecord<T extends Record<string, unknown>>(
   input: BuildContext & { sheetTitle: string; value: T },
 ) {
-  const spreadsheetId = await ensureSpreadsheet(input);
+  const spreadsheetId = await getSpreadsheetId(input, false);
   const sheetTitle = input.sheetTitle as SheetName;
   await input.sheets.spreadsheets.values.append({
     spreadsheetId,
@@ -273,7 +367,7 @@ export async function createRecord<T extends Record<string, unknown>>(
 export async function updateRecord<T extends Record<string, unknown>>(
   input: BuildContext & { sheetTitle: string; id: string; value: T },
 ) {
-  const spreadsheetId = await ensureSpreadsheet(input);
+  const spreadsheetId = await getSpreadsheetId(input, false);
   const sheetTitle = input.sheetTitle as SheetName;
   const rowIndex = await locateRowIndex(input.sheets, spreadsheetId, sheetTitle, input.id);
 
@@ -292,15 +386,10 @@ export async function updateRecord<T extends Record<string, unknown>>(
 export async function deleteRecord(
   input: BuildContext & { sheetTitle: string; id: string },
 ) {
-  const spreadsheetId = await ensureSpreadsheet(input);
+  const spreadsheetId = await getSpreadsheetId(input, false);
   const sheetTitle = input.sheetTitle as SheetName;
   const rowIndex = await locateRowIndex(input.sheets, spreadsheetId, sheetTitle, input.id);
-  const spreadsheet = await input.sheets.spreadsheets.get({ spreadsheetId });
-  const sheetId = spreadsheet.data.sheets?.find((sheet) => sheet.properties?.title === sheetTitle)?.properties?.sheetId;
-
-  if (sheetId === undefined) {
-    throw new Error("SHEET_NOT_FOUND");
-  }
+  const sheetId = await getSheetId(input, spreadsheetId, sheetTitle);
 
   await input.sheets.spreadsheets.batchUpdate({
     spreadsheetId,
@@ -326,9 +415,9 @@ export async function deleteRecord(
 export async function upsertDiary<T extends Record<string, unknown>>(
   input: BuildContext & { value: T },
 ) {
-  const spreadsheetId = await ensureSpreadsheet(input);
+  const spreadsheetId = await getSpreadsheetId(input, false);
   const diary = input.value as unknown as DailyDiary;
-  const rows = await readSheet<Record<string, string>>(input.sheets, spreadsheetId, "DailyDiary");
+  const rows = await ctxReadSheet(input.sheets, spreadsheetId, "DailyDiary");
   const existing = rows.find((row) => row.date === diary.date);
 
   if (!existing) {
@@ -356,10 +445,19 @@ export async function upsertDiary<T extends Record<string, unknown>>(
   return { ok: true, spreadsheetId };
 }
 
+async function ctxReadSheet(sheets: sheets_v4.Sheets, spreadsheetId: string, sheetTitle: SheetName) {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetTitle}!A2:Z`,
+  });
+
+  return mapSheetRows<Record<string, string>>(SHEET_HEADERS[sheetTitle], response.data.values as string[][] | undefined);
+}
+
 export async function upsertSettings<T extends Record<string, unknown>>(
   input: BuildContext & { value: T },
 ) {
-  const spreadsheetId = await ensureSpreadsheet(input);
+  const spreadsheetId = await getSpreadsheetId(input, false);
   const settings = input.value as unknown as Settings;
   const rowIndex = 2;
   await input.sheets.spreadsheets.values.update({

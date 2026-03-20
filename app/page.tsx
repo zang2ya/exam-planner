@@ -11,10 +11,10 @@ export default async function HomePage() {
       <main className="landingPage">
         <section className="landingHero">
           <p className="eyebrow">Study OS for Examinees</p>
-          <h1>Plan, track, review, and memo your study day with Google Sheets.</h1>
+          <h1>구글 시트와 함께 계획, 기록, 회고를 한 번에 관리하세요.</h1>
           <p>
-            This is a personal study planner for exam preparation. Sign in with Google and the app will create
-            a dedicated spreadsheet for your daily plans, study logs, todos, exam dates, and diary notes.
+            수험생을 위한 개인 학습 관리 앱입니다. Google로 로그인하면 데일리 계획, 공부 기록, 투두,
+            시험 일정, 일기 메모를 저장할 전용 스프레드시트를 자동으로 만들어 줍니다.
           </p>
           <div className="landingActions">
             <SignInButton />
@@ -29,8 +29,8 @@ export default async function HomePage() {
       <main className="landingPage">
         <section className="landingHero">
           <p className="eyebrow">Session Error</p>
-          <h1>Please reconnect your Google access.</h1>
-          <p>Sign in again to refresh the Google token and continue using the spreadsheet integration.</p>
+          <h1>Google 권한을 다시 연결해 주세요.</h1>
+          <p>로그인을 다시 하면 Google 토큰을 새로 받아 스프레드시트 연동을 계속 사용할 수 있습니다.</p>
           <div className="landingActions">
             <SignOutButton />
             <SignInButton />
@@ -60,8 +60,8 @@ export default async function HomePage() {
       <main className="landingPage">
         <section className="landingHero">
           <p className="eyebrow">Google Sheets Error</p>
-          <h1>There was a problem preparing your spreadsheet.</h1>
-          <p>Check the Google API setup, OAuth redirect URI, and environment variables, then sign in again.</p>
+          <h1>스프레드시트를 준비하는 중 문제가 생겼어요.</h1>
+          <p>Google API 설정, OAuth 리디렉션 URI, 환경변수를 확인한 뒤 다시 로그인해 주세요.</p>
           <div className="landingActions">
             <SignOutButton />
           </div>
