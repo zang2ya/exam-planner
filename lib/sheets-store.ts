@@ -1,0 +1,375 @@
+import { google, sheets_v4 } from "googleapis";
+
+import { DEFAULT_SETTINGS_ROW, SHEET_HEADERS, SHEET_TITLES } from "@/lib/sheets-schema";
+import type { BootstrapPayload, DailyDiary, Settings } from "@/lib/types";
+
+type BuildContext = {
+  sheets: sheets_v4.Sheets;
+  drive: ReturnType<typeof google.drive>;
+  email: string;
+};
+
+type SheetName = keyof typeof SHEET_HEADERS;
+
+const SPREADSHEET_TITLE_PREFIX = "Exam Planner";
+
+function spreadsheetTitleFor(email: string) {
+  return `${SPREADSHEET_TITLE_PREFIX} - ${email}`;
+}
+
+async function findSpreadsheetId(ctx: BuildContext) {
+  const result = await ctx.drive.files.list({
+    q: [
+      "mimeType='application/vnd.google-apps.spreadsheet'",
+      `name='${spreadsheetTitleFor(ctx.email).replace(/'/g, "\\'")}'`,
+      "trashed=false",
+    ].join(" and "),
+    fields: "files(id,name)",
+    pageSize: 1,
+  });
+
+  return result.data.files?.[0]?.id;
+}
+
+async function createSpreadsheet(ctx: BuildContext) {
+  const created = await ctx.sheets.spreadsheets.create({
+    requestBody: {
+      properties: {
+        title: spreadsheetTitleFor(ctx.email),
+      },
+      sheets: SHEET_TITLES.map((title) => ({ properties: { title } })),
+    },
+  });
+
+  const spreadsheetId = created.data.spreadsheetId;
+
+  if (!spreadsheetId) {
+    throw new Error("SPREADSHEET_CREATE_FAILED");
+  }
+
+  await Promise.all(
+    SHEET_TITLES.map((title) => ensureHeaderRow(ctx.sheets, spreadsheetId, title)),
+  );
+
+  await ctx.sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: "Settings!A:C",
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [[DEFAULT_SETTINGS_ROW.id, DEFAULT_SETTINGS_ROW.subjects, DEFAULT_SETTINGS_ROW.dailyTargetMinutes]],
+    },
+  });
+
+  return spreadsheetId;
+}
+
+async function ensureHeaderRow(sheets: sheets_v4.Sheets, spreadsheetId: string, title: SheetName) {
+  const range = `${title}!1:1`;
+  const current = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  const headers = SHEET_HEADERS[title];
+
+  if (current.data.values?.[0]?.join("|") === headers.join("|")) {
+    return;
+  }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [headers as unknown as string[]],
+    },
+  });
+}
+
+async function ensureSheetExists(sheets: sheets_v4.Sheets, spreadsheetId: string, title: SheetName) {
+  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+  const existingTitles = new Set(
+    spreadsheet.data.sheets?.map((sheet) => sheet.properties?.title).filter(Boolean),
+  );
+
+  if (!existingTitles.has(title)) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            addSheet: {
+              properties: { title },
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  await ensureHeaderRow(sheets, spreadsheetId, title);
+}
+
+export async function ensureSpreadsheet(ctx: BuildContext) {
+  let spreadsheetId = await findSpreadsheetId(ctx);
+
+  if (!spreadsheetId) {
+    spreadsheetId = await createSpreadsheet(ctx);
+  }
+
+  await Promise.all(
+    SHEET_TITLES.map((title) => ensureSheetExists(ctx.sheets, spreadsheetId, title)),
+  );
+
+  return spreadsheetId;
+}
+
+function objectToRow<T extends Record<string, unknown>>(sheetTitle: SheetName, value: T) {
+  return SHEET_HEADERS[sheetTitle].map((header) => {
+    const cell = value[header];
+    if (Array.isArray(cell)) {
+      return cell.join(",");
+    }
+    return String(cell ?? "");
+  });
+}
+
+function rowToObject<T>(headers: readonly string[], row: string[]): T {
+  return headers.reduce((acc, header, index) => {
+    (acc as Record<string, unknown>)[header] = row[index] ?? "";
+    return acc;
+  }, {} as T);
+}
+
+async function readSheet<T>(sheets: sheets_v4.Sheets, spreadsheetId: string, sheetTitle: SheetName): Promise<T[]> {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetTitle}!A2:Z`,
+  });
+
+  const rows = response.data.values ?? [];
+  return rows.map((row) => rowToObject<T>(SHEET_HEADERS[sheetTitle], row));
+}
+
+function mapBootstrap(data: {
+  plans: Array<Record<string, string>>;
+  logs: Array<Record<string, string>>;
+  todos: Array<Record<string, string>>;
+  exams: Array<Record<string, string>>;
+  diaryEntries: Array<Record<string, string>>;
+  settings: Array<Record<string, string>>;
+  spreadsheetId: string;
+}): BootstrapPayload {
+  const settingsRow = data.settings[0] ?? {
+    id: DEFAULT_SETTINGS_ROW.id,
+    subjects: DEFAULT_SETTINGS_ROW.subjects,
+    dailyTargetMinutes: DEFAULT_SETTINGS_ROW.dailyTargetMinutes,
+  };
+
+  return {
+    plans: data.plans.map((row) => ({
+      id: row.id,
+      date: row.date,
+      subject: row.subject,
+      plannedMinutes: Number(row.plannedMinutes || 0),
+      startTime: row.startTime || "",
+      endTime: row.endTime || "",
+      note: row.note || "",
+    })),
+    logs: data.logs.map((row) => ({
+      id: row.id,
+      date: row.date,
+      subject: row.subject,
+      actualMinutes: Number(row.actualMinutes || 0),
+      startTime: row.startTime || "",
+      endTime: row.endTime || "",
+      review: row.review || "",
+      planId: row.planId || "",
+    })),
+    todos: data.todos.map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: (row.status || "todo") as "todo" | "doing" | "done",
+      priority: (row.priority || "medium") as "low" | "medium" | "high",
+      createdAt: row.createdAt,
+      dueDate: row.dueDate || "",
+      subject: row.subject || "",
+    })),
+    exams: data.exams.map((row) => ({
+      id: row.id,
+      name: row.name,
+      examDate: row.examDate,
+      registrationStart: row.registrationStart || "",
+      registrationEnd: row.registrationEnd || "",
+      memo: row.memo || "",
+      importance: (row.importance || "normal") as "normal" | "important" | "critical",
+    })),
+    diaryEntries: data.diaryEntries.map((row) => ({
+      id: row.id,
+      date: row.date,
+      title: row.title || "",
+      content: row.content || "",
+      mood: (row.mood || undefined) as DailyDiary["mood"],
+    })),
+    settings: {
+      id: settingsRow.id,
+      subjects: settingsRow.subjects ? settingsRow.subjects.split(",").map((subject) => subject.trim()).filter(Boolean) : [],
+      dailyTargetMinutes: Number(settingsRow.dailyTargetMinutes || 0),
+    },
+    spreadsheetId: data.spreadsheetId,
+  };
+}
+
+export async function buildBootstrapData(ctx: BuildContext) {
+  const spreadsheetId = await ensureSpreadsheet(ctx);
+  const [plans, logs, todos, exams, diaryEntries, settings] = await Promise.all([
+    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "DailyPlans"),
+    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "StudyLogs"),
+    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "Todos"),
+    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "Exams"),
+    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "DailyDiary"),
+    readSheet<Record<string, string>>(ctx.sheets, spreadsheetId, "Settings"),
+  ]);
+
+  return mapBootstrap({
+    plans,
+    logs,
+    todos,
+    exams,
+    diaryEntries,
+    settings,
+    spreadsheetId,
+  });
+}
+
+async function locateRowIndex(sheets: sheets_v4.Sheets, spreadsheetId: string, sheetTitle: SheetName, id: string) {
+  const rows = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetTitle}!A2:Z`,
+  });
+  const values = rows.data.values ?? [];
+  const relativeIndex = values.findIndex((row) => row[0] === id);
+
+  if (relativeIndex === -1) {
+    throw new Error("ROW_NOT_FOUND");
+  }
+
+  return relativeIndex + 2;
+}
+
+export async function createRecord<T extends Record<string, unknown>>(
+  input: BuildContext & { sheetTitle: string; value: T },
+) {
+  const spreadsheetId = await ensureSpreadsheet(input);
+  const sheetTitle = input.sheetTitle as SheetName;
+  await input.sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${sheetTitle}!A:Z`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [objectToRow(sheetTitle, input.value)],
+    },
+  });
+
+  return { ok: true, spreadsheetId };
+}
+
+export async function updateRecord<T extends Record<string, unknown>>(
+  input: BuildContext & { sheetTitle: string; id: string; value: T },
+) {
+  const spreadsheetId = await ensureSpreadsheet(input);
+  const sheetTitle = input.sheetTitle as SheetName;
+  const rowIndex = await locateRowIndex(input.sheets, spreadsheetId, sheetTitle, input.id);
+
+  await input.sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${sheetTitle}!A${rowIndex}:Z${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [objectToRow(sheetTitle, input.value)],
+    },
+  });
+
+  return { ok: true, spreadsheetId };
+}
+
+export async function deleteRecord(
+  input: BuildContext & { sheetTitle: string; id: string },
+) {
+  const spreadsheetId = await ensureSpreadsheet(input);
+  const sheetTitle = input.sheetTitle as SheetName;
+  const rowIndex = await locateRowIndex(input.sheets, spreadsheetId, sheetTitle, input.id);
+  const spreadsheet = await input.sheets.spreadsheets.get({ spreadsheetId });
+  const sheetId = spreadsheet.data.sheets?.find((sheet) => sheet.properties?.title === sheetTitle)?.properties?.sheetId;
+
+  if (sheetId === undefined) {
+    throw new Error("SHEET_NOT_FOUND");
+  }
+
+  await input.sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: rowIndex - 1,
+              endIndex: rowIndex,
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  return { ok: true, spreadsheetId };
+}
+
+export async function upsertDiary<T extends Record<string, unknown>>(
+  input: BuildContext & { value: T },
+) {
+  const spreadsheetId = await ensureSpreadsheet(input);
+  const diary = input.value as unknown as DailyDiary;
+  const rows = await readSheet<Record<string, string>>(input.sheets, spreadsheetId, "DailyDiary");
+  const existing = rows.find((row) => row.date === diary.date);
+
+  if (!existing) {
+    await input.sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "DailyDiary!A:Z",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [objectToRow("DailyDiary", diary as unknown as Record<string, unknown>)],
+      },
+    });
+    return { ok: true, spreadsheetId };
+  }
+
+  const rowIndex = await locateRowIndex(input.sheets, spreadsheetId, "DailyDiary", existing.id);
+  await input.sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `DailyDiary!A${rowIndex}:Z${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [objectToRow("DailyDiary", { ...diary, id: existing.id })],
+    },
+  });
+
+  return { ok: true, spreadsheetId };
+}
+
+export async function upsertSettings<T extends Record<string, unknown>>(
+  input: BuildContext & { value: T },
+) {
+  const spreadsheetId = await ensureSpreadsheet(input);
+  const settings = input.value as unknown as Settings;
+  const rowIndex = 2;
+  await input.sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `Settings!A${rowIndex}:C${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [[settings.id, settings.subjects.join(","), String(settings.dailyTargetMinutes)]],
+    },
+  });
+
+  return { ok: true, spreadsheetId };
+}
