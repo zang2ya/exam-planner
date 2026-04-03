@@ -423,7 +423,17 @@ export function StudyManager({ initialData }: Props) {
               />
               <button className="primaryButton" disabled={pending}>설정 저장</button>
             </form>
-            <p className="metaText">Spreadsheet ID: {data.spreadsheetId}</p>
+            <p className="metaText">
+              Spreadsheet:
+              {" "}
+              <a
+                href={`https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/edit`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {data.spreadsheetId}
+              </a>
+            </p>
           </article>
         </div>
       </section>
