@@ -1,10 +1,31 @@
 import { SignInButton, SignOutButton } from "@/components/auth-buttons";
 import { StudyManager } from "@/components/study-manager";
 import { auth } from "@/lib/auth";
+import { demoData } from "@/lib/demo-data";
 import { getBootstrap } from "@/lib/google-sheets";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ demo?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
+  const demoMode = params.demo === "1";
   const session = await auth();
+
+  if (demoMode) {
+    return (
+      <>
+        <header className="topBar">
+          <div>
+            <strong>데모 모드</strong>
+            <span>Google 로그인 없이 화면만 둘러보는 상태입니다.</span>
+          </div>
+        </header>
+        <StudyManager initialData={demoData} />
+      </>
+    );
+  }
 
   if (!session?.user) {
     return (
@@ -18,6 +39,9 @@ export default async function HomePage() {
           </p>
           <div className="landingActions">
             <SignInButton />
+            <a className="ghostButton" href="/?demo=1">
+              데모로 둘러보기
+            </a>
           </div>
         </section>
       </main>
@@ -34,6 +58,9 @@ export default async function HomePage() {
           <div className="landingActions">
             <SignOutButton />
             <SignInButton />
+            <a className="ghostButton" href="/?demo=1">
+              데모로 보기
+            </a>
           </div>
         </section>
       </main>
@@ -64,6 +91,9 @@ export default async function HomePage() {
           <p>Google API 설정, OAuth 리디렉션 URI, 환경변수를 확인한 뒤 다시 로그인해 주세요.</p>
           <div className="landingActions">
             <SignOutButton />
+            <a className="ghostButton" href="/?demo=1">
+              데모로 보기
+            </a>
           </div>
         </section>
       </main>
